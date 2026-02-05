@@ -2,20 +2,11 @@ from exif import Image
 from datetime import datetime
 import cv2
 import math
+from picamzero import Camera
 import os
 
-from picamzero import Camera
-from time import sleep
-
-total_pics = 40
-
-home_dir = os.environ['HOME'] #set the location of your home directory
+home_dir = os.environ['HOME']
 cam = Camera()
-
-for i in range(total_pics):
-    cam.start_preview()
-    cam.take_photo(f"{home_dir}/new_image{i}.jpg") #save the image to your desktop
-    cam.stop_preview()
 
 def get_time(image):
     with open(image, 'rb') as image_file:
@@ -81,21 +72,29 @@ def calculate_speed_in_kmps(feature_distance, GSD, time_difference):
     speed = distance / time_difference
     return speed
 
-pics = []
-for i in range(total_pics):
-    pics.append(f"{home_dir}/new_image{i}.jpg")
+cam.capture_sequence(f"{home_dir}/sequence.jpg", num_images=3, interval=2)
+image_1 = f"{home_dir}/sequence-1.jpg"
+image_2 = f"{home_dir}/sequence-2.jpg"
 
-time_difference = get_time_difference(pics[0], pics[1]) # Get time difference between images
-
-pics_cv = []
-for i in range():
-    pics_cv.append()
-image_1_cv, image_2_cv = convert_to_cv(pics[0], pics[1]) # Create OpenCV image objects
+time_difference = get_time_difference(image_1, image_2) # Get time difference between images
+image_1_cv, image_2_cv = convert_to_cv(image_1, image_2) # Create OpenCV image objects
 keypoints_1, keypoints_2, descriptors_1, descriptors_2 = calculate_features(image_1_cv, image_2_cv, 1000) # Get keypoints and descriptors
 matches = calculate_matches(descriptors_1, descriptors_2) # Match descriptors
-display_matches(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches) # Display matches
+#display_matches(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches) # Display matches
 coordinates_1, coordinates_2 = find_matching_coordinates(keypoints_1, keypoints_2, matches)
 average_feature_distance = calculate_mean_distance(coordinates_1, coordinates_2)
 speed = calculate_speed_in_kmps(average_feature_distance, 12648, time_difference)
-print(speed)
 
+# Format the estimate_kmps to have a precision
+# of 5 significant figures
+speed_formatted = "{:.4f}".format(speed)
+
+# Create a string to write to the file
+output_string = speed_formatted
+
+# Write to the file
+file_path = "result.txt"  # Replace with your desired file path
+with open(file_path, 'w') as file:
+    file.write(output_string)
+
+print("Data written to", file_path)
