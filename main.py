@@ -21,16 +21,10 @@ def get_time_difference(image_1, image_2):
     time_difference = time_2 - time_1
     return time_difference.seconds
 
-def convert_to_cv(image_1, image_2):
-    image_1_cv = cv2.imread(image_1, 0)
-    image_2_cv = cv2.imread(image_2, 0)
-    return image_1_cv, image_2_cv
-
-def calculate_features(image_1, image_2, feature_number):
+def calculate_features(image_cv, feature_number):
     orb = cv2.ORB_create(nfeatures = feature_number)
-    keypoints_1, descriptors_1 = orb.detectAndCompute(image_1_cv, None)
-    keypoints_2, descriptors_2 = orb.detectAndCompute(image_2_cv, None)
-    return keypoints_1, keypoints_2, descriptors_1, descriptors_2
+    keypoint, descriptor = orb.detectAndCompute(image_cv, None)
+    return keypoint, descriptor
 
 def calculate_matches(descriptors_1, descriptors_2):
     brute_force = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
@@ -45,48 +39,86 @@ def display_matches(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches):
     cv2.waitKey(0)
     cv2.destroyWindow('matches')
 
-def find_matching_coordinates(keypoints_1, keypoints_2, matches):
+def find_matching_coordinates(keypoints_1, keypoints_2, matches, image_shape, radius_ratio=0.25):
+    h, w = image_shape
+    cx, cy = w / 2, h / 2
+    max_radius = min(w, h) * radius_ratio
+
     coordinates_1 = []
     coordinates_2 = []
+
     for match in matches:
-        image_1_idx = match.queryIdx
-        image_2_idx = match.trainIdx
-        (x1,y1) = keypoints_1[image_1_idx].pt
-        (x2,y2) = keypoints_2[image_2_idx].pt
-        coordinates_1.append((x1,y1))
-        coordinates_2.append((x2,y2))
+        (x1, y1) = keypoints_1[match.queryIdx].pt
+        (x2, y2) = keypoints_2[match.trainIdx].pt
+
+        # keep only features near image center because of camera tilt etc.
+        if math.hypot(x1 - cx, y1 - cy) < max_radius:
+            coordinates_1.append((x1, y1))
+            coordinates_2.append((x2, y2))
+
     return coordinates_1, coordinates_2
 
-def calculate_mean_distance(coordinates_1, coordinates_2):
-    all_distances = 0
-    merged_coordinates = list(zip(coordinates_1, coordinates_2))
-    for coordinate in merged_coordinates:
-        x_difference = coordinate[0][0] - coordinate[1][0]
-        y_difference = coordinate[0][1] - coordinate[1][1]
-        distance = math.hypot(x_difference, y_difference)
-        all_distances = all_distances + distance
-    return all_distances / len(merged_coordinates)
+
+def calculate_mean_distance(coordinates_1, coordinates_2, keep_ratio=0.5):
+    distances = []
+    merged_coordinates = zip(coordinates_1, coordinates_2)
+
+    for (x1, y1), (x2, y2) in merged_coordinates:
+        distance = math.hypot(x1 - x2, y1 - y2)
+        distances.append(distance)
+
+    if not distances:
+        return 0  # avoid division by zero
+
+    distances.sort()
+
+    cutoff = int(len(distances) * (1 - keep_ratio))
+    filtered = distances[cutoff:]
+
+    if not filtered:
+        return 0  # avoid division by zero
+
+    return sum(filtered) / len(filtered)
+
 
 def calculate_speed_in_kmps(feature_distance, GSD, time_difference):
     distance = feature_distance * GSD / 100000
     speed = distance / time_difference
     return speed
 
-cam.capture_sequence(f"{home_dir}/sequence.jpg", num_images=3, interval=2)
-image_1 = f"{home_dir}/sequence-1.jpg"
-image_2 = f"{home_dir}/sequence-2.jpg"
+total_pictures = 10
+time_difference = 2.0
 
-time_difference = get_time_difference(image_1, image_2) # Get time difference between images
-image_1_cv, image_2_cv = convert_to_cv(image_1, image_2) # Create OpenCV image objects
-keypoints_1, keypoints_2, descriptors_1, descriptors_2 = calculate_features(image_1_cv, image_2_cv, 1000) # Get keypoints and descriptors
-matches = calculate_matches(descriptors_1, descriptors_2) # Match descriptors
-#display_matches(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches) # Display matches
-coordinates_1, coordinates_2 = find_matching_coordinates(keypoints_1, keypoints_2, matches)
-average_feature_distance = calculate_mean_distance(coordinates_1, coordinates_2)
-speed = calculate_speed_in_kmps(average_feature_distance, 12648, time_difference)
+cam.capture_sequence(f"{home_dir}/sequence.jpg", num_images=total_pictures, interval=time_difference)
+images = [f"{home_dir}/sequence-{i:02d}.jpg" for i in range(1, total_pictures + 1)]
 
-# Format the estimate_kmps to have a precision
-# of 5 significant figures
+images_cv = [cv2.imread(image, 0) for image in images] # Create Opencv image objects
+
+keypoints = []
+descriptors = []
+for image in images_cv:
+    keypoint, descriptor = calculate_features(image, 1000) # Get keypoints and descriptors
+    keypoints.append(keypoint)
+    descriptors.append(descriptor)
+
+coordinates = []
+for i in range(total_pictures - 1):
+    matches = calculate_matches(descriptors[i], descriptors[i+1]) # Match descriptors
+    coordinates_1, coordinates_2 = coordinates_1, coordinates_2 = find_matching_coordinates(keypoints[i],keypoints[i+1],matches,images_cv[i].shape)
+
+    coordinates.append((coordinates_1, coordinates_2)) # store the pair
+
+pair_speeds = []
+for i in range(total_pictures - 1): 
+    coordinates_1, coordinates_2 = coordinates[i]
+    feature_distance = calculate_mean_distance(coordinates_1, coordinates_2)
+    speed = calculate_speed_in_kmps(feature_distance, 12648, time_difference)
+    pair_speeds.append(speed)
+
+pair_speeds.sort()
+speed = pair_speeds[len(pair_speeds) // 2] # Get median speed for best accuracy
+
+# format speed to 4 decimals
 speed_formatted = "{:.4f}".format(speed)
 
 # Create a string to write to the file
