@@ -8,19 +8,6 @@ import os
 home_dir = os.environ['HOME']
 cam = Camera()
 
-def get_time(image):
-    with open(image, 'rb') as image_file:
-        img = Image(image_file)
-        time_str = img.get("datetime_original")
-        time = datetime.strptime(time_str, '%Y:%m:%d %H:%M:%S')
-        return time
-
-def get_time_difference(image_1, image_2):
-    time_1 = get_time(image_1)
-    time_2 = get_time(image_2)
-    time_difference = time_2 - time_1
-    return time_difference.seconds
-
 def calculate_features(image_cv, feature_number):
     orb = cv2.ORB_create(nfeatures = feature_number)
     keypoint, descriptor = orb.detectAndCompute(image_cv, None)
@@ -125,8 +112,10 @@ speed_formatted = "{:.4f}".format(speed)
 output_string = speed_formatted
 
 # Write to the file
-file_path = "result.txt"  # Replace with your desired file path
+file_path = "result.txt" 
 with open(file_path, 'w') as file:
     file.write(output_string)
 
-print("Data written to", file_path)
+result = speed - 7.66
+percentage_error = (abs(result) / 7.66) * 100
+print("percentage error:", percentage_error)
