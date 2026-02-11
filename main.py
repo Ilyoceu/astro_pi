@@ -1,5 +1,3 @@
-from exif import Image
-from datetime import datetime
 import cv2
 import math
 from picamzero import Camera
@@ -16,15 +14,8 @@ def calculate_features(image_cv, feature_number):
 def calculate_matches(descriptors_1, descriptors_2):
     brute_force = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
     matches = brute_force.match(descriptors_1, descriptors_2)
-    matches = sorted(matches, key=lambda x: x.distance)
+    matches = sorted(matches, key = lambda x: x.distance)
     return matches
-
-def display_matches(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches):
-    match_img = cv2.drawMatches(image_1_cv, keypoints_1, image_2_cv, keypoints_2, matches[:100], None)
-    resize = cv2.resize(match_img, (1600,600), interpolation = cv2.INTER_AREA)
-    cv2.imshow('matches', resize)
-    cv2.waitKey(0)
-    cv2.destroyWindow('matches')
 
 def find_matching_coordinates(keypoints_1, keypoints_2, matches, image_shape, radius_ratio=0.25):
     h, w = image_shape
@@ -49,22 +40,16 @@ def find_matching_coordinates(keypoints_1, keypoints_2, matches, image_shape, ra
 def calculate_mean_distance(coordinates_1, coordinates_2, keep_ratio=0.5):
     distances = []
     merged_coordinates = zip(coordinates_1, coordinates_2)
-
     for (x1, y1), (x2, y2) in merged_coordinates:
         distance = math.hypot(x1 - x2, y1 - y2)
         distances.append(distance)
-
     if not distances:
         return 0  # avoid division by zero
-
     distances.sort()
-
     cutoff = int(len(distances) * (1 - keep_ratio))
     filtered = distances[cutoff:]
-
     if not filtered:
         return 0  # avoid division by zero
-
     return sum(filtered) / len(filtered)
 
 
@@ -73,12 +58,15 @@ def calculate_speed_in_kmps(feature_distance, GSD, time_difference):
     speed = distance / time_difference
     return speed
 
-total_pictures = 10
+# edit variable for amount of pictures min. 3 (capture_sequence logic) max. 42 (project requirement)
+# lower pictures are better for accuracy
+total_pictures = 42
+# time difference in seconds 2 seconds is best
+# large time differences causes dissapearing features, small time differences has problems with ORB features
 time_difference = 2.0
 
 cam.capture_sequence(f"{home_dir}/sequence.jpg", num_images=total_pictures, interval=time_difference)
 images = [f"{home_dir}/sequence-{i:02d}.jpg" for i in range(1, total_pictures + 1)]
-
 images_cv = [cv2.imread(image, 0) for image in images] # Create Opencv image objects
 
 keypoints = []
@@ -91,8 +79,7 @@ for image in images_cv:
 coordinates = []
 for i in range(total_pictures - 1):
     matches = calculate_matches(descriptors[i], descriptors[i+1]) # Match descriptors
-    coordinates_1, coordinates_2 = coordinates_1, coordinates_2 = find_matching_coordinates(keypoints[i],keypoints[i+1],matches,images_cv[i].shape)
-
+    coordinates_1, coordinates_2 =  find_matching_coordinates(keypoints[i],keypoints[i+1],matches,images_cv[i].shape)
     coordinates.append((coordinates_1, coordinates_2)) # store the pair
 
 pair_speeds = []
